@@ -115,6 +115,17 @@ export interface DelayRecord {
   createdAt: string;
 }
 
+export interface FileVersion {
+  id: string;
+  fileId: string;
+  version: number;
+  size: number;
+  url: string;
+  uploadedBy: string;
+  uploadedAt: string;
+  changeLog: string;
+}
+
 export interface ProjectFile {
   id: string;
   projectId: string;
@@ -126,6 +137,8 @@ export interface ProjectFile {
   uploadedAt: string;
   tags: string[];
   requirementId: string | null;
+  currentVersion: number;
+  versions: FileVersion[];
 }
 
 export interface PendingItem {
@@ -153,4 +166,23 @@ export interface MemberWorkload {
   doneTasks: number;
   estimatedHours: number;
   spentHours: number;
+}
+
+export type SearchResultType = 'requirement' | 'comment' | 'file' | 'milestone' | 'member';
+
+export interface SearchResult {
+  type: SearchResultType;
+  id: string;
+  title: string;
+  description: string;
+  highlight?: string;
+  url: string;
+}
+
+export interface SearchResults {
+  requirements: SearchResult[];
+  comments: SearchResult[];
+  files: SearchResult[];
+  milestones: SearchResult[];
+  members: SearchResult[];
 }
