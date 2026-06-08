@@ -66,9 +66,12 @@ interface AppState {
 
   setCurrentProject: (projectId: string) => void;
   addProject: (project: Omit<Project, 'id' | 'createdAt'>) => string;
+  updateRequirement: (id: string, updates: Partial<Requirement>) => void;
   updateRequirementStatus: (id: string, status: RequirementStatus) => void;
+  deleteRequirement: (id: string) => void;
   addComment: (requirementId: string, content: string) => void;
   addRequirement: (req: Omit<Requirement, 'id' | 'createdAt' | 'updatedAt'>) => string;
+  addFile: (file: Omit<ProjectFile, 'id' | 'uploadedAt'>) => string;
   linkFileToRequirement: (fileId: string, requirementId: string) => void;
   unlinkFileFromRequirement: (fileId: string) => void;
   confirmPendingItem: (id: string) => void;
@@ -311,6 +314,92 @@ export const useStore = create<AppState>()(
         return newId;
       },
 
+      updateRequirement: (id, updates) => {
+        const { requirements, currentUserId, addActivity } = get();
+        const oldReq = requirements.find((r) => r.id === id);
+        if (!oldReq) return;
+
+        const fieldLabels: Record<string, string> = {
+          title: '标题',
+          description: '说明',
+          assigneeId: '负责人',
+          priority: '优先级',
+          estimatedHours: '预计工时',
+          dueDate: '截止日期',
+          status: '状态',
+          blocked: '阻塞状态',
+          blockReason: '阻塞原因',
+          milestoneId: '里程碑',
+        };
+
+        const changedFields: string[] = [];
+        Object.keys(updates).forEach((key) => {
+          if (updates[key as keyof Requirement] !== oldReq[key as keyof Requirement]) {
+            changedFields.push(key);
+          }
+        });
+
+        set((state) => ({
+          requirements: state.requirements.map((r) =>
+          r.id === id
+            ? { ...r, ...updates, updatedAt: new Date().toISOString() }
+            : r
+        ),
+        }));
+
+        if (changedFields.length > 0) {
+          const changesDesc = changedFields
+            .map((f) => fieldLabels[f] || f)
+            .join('、');
+          addActivity({
+            projectId: oldReq.projectId,
+            type: 'status-change',
+            userId: currentUserId,
+            requirementId: id,
+            description: `更新了「${oldReq.title}」的${changesDesc}`,
+            metadata: { oldValues: oldReq, newValues: updates },
+          });
+        }
+      },
+
+      deleteRequirement: (id) => {
+        const { requirements, currentUserId, addActivity } = get();
+        const req = requirements.find((r) => r.id === id);
+        if (!req) return;
+
+        set((state) => ({
+          requirements: state.requirements.filter((r) => r.id !== id),
+          comments: state.comments.filter((c) => c.requirementId !== id),
+          files: state.files.map((f) =>
+            f.requirementId === id ? { ...f, requirementId: null } : f
+          ),
+          activities: state.activities.filter((a) => a.requirementId !== id),
+        }));
+
+        addActivity({
+          projectId: req.projectId,
+          type: 'status-change',
+          userId: currentUserId,
+          requirementId: null,
+          description: `删除了需求「${req.title}」`,
+          metadata: { deletedId: id },
+        });
+      },
+
+      addFile: (file) => {
+        const newId = `f${Date.now()}`;
+        const newFile: ProjectFile = {
+          ...file,
+          id: newId,
+          uploadedAt: new Date().toISOString(),
+        };
+
+        set((state) => ({
+          files: [...state.files, newFile],
+        }));
+        return newId;
+      },
+
       linkFileToRequirement: (fileId, requirementId) => {
         const { files, requirements, currentUserId, addActivity } = get();
         set((state) => ({
@@ -334,11 +423,26 @@ export const useStore = create<AppState>()(
       },
 
       unlinkFileFromRequirement: (fileId) => {
+        const { files, requirements, currentUserId, addActivity } = get();
+        const file = files.find((f) => f.id === fileId);
+        const req = file?.requirementId ? requirements.find((r) => r.id === file.requirementId) : undefined;
+        
         set((state) => ({
           files: state.files.map((f) =>
             f.id === fileId ? { ...f, requirementId: null } : f
           ),
         }));
+
+        if (file && req) {
+          addActivity({
+            projectId: req.projectId,
+            type: 'file-upload',
+            userId: currentUserId,
+            requirementId: req.id,
+            description: `将文件「${file.name}」从「${req.title}」取消关联`,
+            metadata: { fileId, requirementId: req.id },
+          });
+        }
       },
 
       confirmPendingItem: (id) => {

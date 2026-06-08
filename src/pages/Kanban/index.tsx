@@ -32,6 +32,10 @@ import {
   Paperclip,
   ChevronDown,
   ChevronUp,
+  Pencil,
+  Unlink,
+  Check,
+  X,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { kanbanColumns } from '../../data/mockData';
@@ -51,6 +55,7 @@ import { Avatar } from '../../components/ui/Avatar';
 import { Modal } from '../../components/ui/Modal';
 import { Card } from '../../components/ui/Card';
 import { Tag } from '../../components/ui/Tag';
+import { Input } from '../../components/ui/Input';
 
 const activityIconMap: Record<string, typeof RefreshCw> = {
   'status-change': RefreshCw,
@@ -121,9 +126,9 @@ function SortableTaskCard({ task, onClick }: SortableCardProps) {
 export default function Kanban() {
   const {
     users, getRequirementsByStatus, getCommentsByRequirement, getFilesByProject, getFilesByRequirement,
-    getActivitiesByProject, getUserById, updateRequirementStatus, addComment, linkFileToRequirement,
-    currentProjectId, myTasksFilter, assigneeFilter, priorityFilter, setMyTasksFilter,
-    setAssigneeFilter, setPriorityFilter,
+    getActivitiesByProject, getUserById, updateRequirementStatus, updateRequirement, addComment,
+    linkFileToRequirement, unlinkFileFromRequirement, currentProjectId, myTasksFilter, assigneeFilter,
+    priorityFilter, setMyTasksFilter, setAssigneeFilter, setPriorityFilter,
   } = useStore();
 
   const [activeTask, setActiveTask] = useState<Requirement | null>(null);
@@ -131,6 +136,8 @@ export default function Kanban() {
   const [showModal, setShowModal] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showFileSelector, setShowFileSelector] = useState(false);
+  const [editingField, setEditingField] = useState<string | null>(null);
+  const [editValue, setEditValue] = useState<string | number>('');
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -190,6 +197,55 @@ export default function Kanban() {
     }
   };
 
+  const handleUnlinkFile = (fileId: string) => {
+    unlinkFileFromRequirement(fileId);
+  };
+
+  const startEditing = (field: string, value: string | number) => {
+    setEditingField(field);
+    setEditValue(value);
+  };
+
+  const cancelEditing = () => {
+    setEditingField(null);
+    setEditValue('');
+  };
+
+  const saveEditing = (field: string) => {
+    if (!selectedTask) return;
+    
+    let updates: Partial<Requirement> = {};
+    switch (field) {
+      case 'assigneeId':
+        updates = { assigneeId: editValue as string || null };
+        break;
+      case 'priority':
+        updates = { priority: editValue as Priority };
+        break;
+      case 'dueDate':
+        updates = { dueDate: editValue as string || null };
+        break;
+      case 'estimatedHours':
+        updates = { estimatedHours: Number(editValue) || 0 };
+        break;
+      case 'status':
+        updates = { status: editValue as RequirementStatus };
+        break;
+      default:
+        return;
+    }
+    
+    updateRequirement(selectedTask.id, updates);
+    setEditingField(null);
+    setEditValue('');
+  };
+
+  const handleStatusChange = (status: RequirementStatus) => {
+    if (!selectedTask) return;
+    updateRequirementStatus(selectedTask.id, status);
+  };
+
+  const selectStyle = "w-full px-3 py-2 bg-dark-200 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors";
   const textareaStyle = "w-full px-3 py-2 bg-dark-200 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors resize-none min-h-[80px]";
 
   return (
@@ -278,8 +334,56 @@ export default function Kanban() {
         {selectedTask && (
           <div className="space-y-5">
             <div className="flex items-center gap-2 flex-wrap">
-              <Badge variant={selectedTask.status}>{getStatusLabel(selectedTask.status)}</Badge>
-              <Badge variant={selectedTask.priority}>{getPriorityLabel(selectedTask.priority)}</Badge>
+              <div className="flex items-center gap-2">
+                <select
+                  value={selectedTask.status}
+                  onChange={(e) => handleStatusChange(e.target.value as RequirementStatus)}
+                  className={cn(selectStyle, "!py-1 !text-xs !w-auto")}
+                >
+                  {kanbanColumns.map((col) => (
+                    <option key={col.id} value={col.id}>{col.title}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center gap-2">
+                {editingField === 'priority' ? (
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={editValue as string}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className={cn(selectStyle, "!py-1 !text-xs !w-auto")}
+                      autoFocus
+                    >
+                      <option value="low">低</option>
+                      <option value="medium">中</option>
+                      <option value="high">高</option>
+                      <option value="urgent">紧急</option>
+                    </select>
+                    <button
+                      onClick={() => saveEditing('priority')}
+                      className="p-1 rounded hover:bg-dark-100 text-success-500"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="p-1 rounded hover:bg-dark-100 text-danger-500"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 group">
+                    <Badge variant={selectedTask.priority}>{getPriorityLabel(selectedTask.priority)}</Badge>
+                    <button
+                      onClick={() => startEditing('priority', selectedTask.priority)}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-dark-100 text-slate-400 transition-opacity"
+                    >
+                      <Pencil className="w-3 h-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
               {selectedTask.tags.map((tag) => <Tag key={tag} variant="default">{tag}</Tag>)}
             </div>
             <div>
@@ -289,20 +393,122 @@ export default function Kanban() {
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">负责人</h4>
-                {selectedTask.assigneeId ? (
+                {editingField === 'assigneeId' ? (
                   <div className="flex items-center gap-2">
-                    <Avatar src={getUserById(selectedTask.assigneeId)?.avatar} name={getUserById(selectedTask.assigneeId)?.name} size="sm" />
-                    <span className="text-slate-400 text-sm">{getUserById(selectedTask.assigneeId)?.name}</span>
+                    <select
+                      value={editValue as string}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className={selectStyle}
+                      autoFocus
+                    >
+                      <option value="">未分配</option>
+                      {users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={() => saveEditing('assigneeId')}
+                      className="p-1.5 rounded hover:bg-dark-100 text-success-500"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="p-1.5 rounded hover:bg-dark-100 text-danger-500"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                ) : <span className="text-slate-500 text-sm">未分配</span>}
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    {selectedTask.assigneeId ? (
+                      <div className="flex items-center gap-2">
+                        <Avatar src={getUserById(selectedTask.assigneeId)?.avatar} name={getUserById(selectedTask.assigneeId)?.name} size="sm" />
+                        <span className="text-slate-400 text-sm">{getUserById(selectedTask.assigneeId)?.name}</span>
+                      </div>
+                    ) : <span className="text-slate-500 text-sm">未分配</span>}
+                    <button
+                      onClick={() => startEditing('assigneeId', selectedTask.assigneeId || '')}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-dark-100 text-slate-400 transition-opacity"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">截止日期</h4>
-                <span className="text-slate-400 text-sm">{formatDate(selectedTask.dueDate)}</span>
+                {editingField === 'dueDate' ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="date"
+                      value={editValue as string}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="!py-1.5"
+                      autoFocus
+                    />
+                    <button
+                      onClick={() => saveEditing('dueDate')}
+                      className="p-1.5 rounded hover:bg-dark-100 text-success-500"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="p-1.5 rounded hover:bg-dark-100 text-danger-500"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <span className="text-slate-400 text-sm">{formatDate(selectedTask.dueDate)}</span>
+                    <button
+                      onClick={() => startEditing('dueDate', selectedTask.dueDate || '')}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-dark-100 text-slate-400 transition-opacity"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">预计工时</h4>
-                <span className="text-slate-400 text-sm">{selectedTask.estimatedHours} 小时</span>
+                {editingField === 'estimatedHours' ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={editValue as number}
+                      onChange={(e) => setEditValue(e.target.value)}
+                      className="!py-1.5"
+                      min="0"
+                      autoFocus
+                    />
+                    <span className="text-slate-400 text-sm">小时</span>
+                    <button
+                      onClick={() => saveEditing('estimatedHours')}
+                      className="p-1.5 rounded hover:bg-dark-100 text-success-500"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={cancelEditing}
+                      className="p-1.5 rounded hover:bg-dark-100 text-danger-500"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2 group">
+                    <span className="text-slate-400 text-sm">{selectedTask.estimatedHours} 小时</span>
+                    <button
+                      onClick={() => startEditing('estimatedHours', selectedTask.estimatedHours)}
+                      className="p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-dark-100 text-slate-400 transition-opacity"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-2">已用工时</h4>
@@ -360,12 +566,21 @@ export default function Kanban() {
                     <Card key={file.id} className="p-3">
                       <div className="flex items-center gap-3">
                         <FileText className="w-5 h-5 text-primary-400" />
-                        <div className="flex-1">
-                          <p className="text-sm text-slate-200">{file.name}</p>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm text-slate-200 truncate">{file.name}</p>
                           <p className="text-xs text-slate-500">
                             {formatFileSize(file.size)} · {formatDateTime(file.uploadedAt)}
                           </p>
                         </div>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleUnlinkFile(file.id)}
+                          className="!p-1.5 text-slate-400 hover:text-danger-500 hover:bg-danger-500/10"
+                          title="取消关联"
+                        >
+                          <Unlink className="w-4 h-4" />
+                        </Button>
                       </div>
                     </Card>
                   ))}

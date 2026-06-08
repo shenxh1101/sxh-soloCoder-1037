@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Search, Plus, Filter, ChevronDown, ChevronUp, X, Send, Clock, User, Calendar, Tag, AlertTriangle, History } from 'lucide-react';
+import { Search, Plus, Filter, ChevronDown, ChevronUp, X, Send, Clock, User, Calendar, Tag, AlertTriangle, History, Edit2, Trash2 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
@@ -7,9 +7,10 @@ import { Avatar } from '../../components/ui/Avatar';
 import { Tag as TagComponent } from '../../components/ui/Tag';
 import { Progress } from '../../components/ui/Progress';
 import { Input } from '../../components/ui/Input';
+import { Modal } from '../../components/ui/Modal';
 import { useStore } from '../../store';
 import { formatDate, formatDateTime, formatRelativeTime, getStatusLabel, getPriorityLabel } from '../../utils';
-import type { Requirement, Priority } from '../../types';
+import type { Requirement, Priority, RequirementStatus } from '../../types';
 
 export default function Requirements() {
   const s = useStore();
@@ -29,6 +30,9 @@ export default function Requirements() {
     dueDate: '',
   });
   const [formErrors, setFormErrors] = useState<{ title?: string }>({});
+  const [isEditing, setIsEditing] = useState(false);
+  const [editFormData, setEditFormData] = useState<Partial<Requirement>>({});
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   const requirements = useMemo(() => {
     let reqs = s.getRequirementsByProject(s.currentProjectId)
@@ -50,11 +54,11 @@ export default function Requirements() {
       setFormErrors({ title: '请输入需求标题' });
       return;
     }
-    const newId = s.addRequirement({
+    const newReqData = {
       projectId: s.currentProjectId,
       title: formData.title.trim(),
       description: formData.description.trim(),
-      status: 'todo',
+      status: 'todo' as const,
       priority: formData.priority,
       assigneeId: formData.assigneeId || null,
       reporterId: s.currentUserId,
@@ -65,11 +69,15 @@ export default function Requirements() {
       milestoneId: null,
       blocked: false,
       blockReason: null,
-    });
-    const newReq = s.requirements.find((r) => r.id === newId);
-    if (newReq) {
-      setSelectedReq(newReq);
-    }
+    };
+    const newId = s.addRequirement(newReqData);
+    const newReq: Requirement = {
+      ...newReqData,
+      id: newId,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    setSelectedReq(newReq);
     setFormData({
       title: '',
       description: '',
@@ -103,6 +111,58 @@ export default function Requirements() {
       s.addComment(selectedReq.id, commentText.trim());
       setCommentText('');
     }
+  };
+
+  const handleStartEdit = () => {
+    if (!selectedReq) return;
+    setEditFormData({
+      title: selectedReq.title,
+      description: selectedReq.description,
+      assigneeId: selectedReq.assigneeId,
+      priority: selectedReq.priority,
+      estimatedHours: selectedReq.estimatedHours,
+      dueDate: selectedReq.dueDate,
+      status: selectedReq.status,
+      blocked: selectedReq.blocked,
+      blockReason: selectedReq.blockReason,
+    });
+    setIsEditing(true);
+  };
+
+  const handleCancelEdit = () => {
+    setIsEditing(false);
+    setEditFormData({});
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedReq || !editFormData.title?.trim()) return;
+    const updates: Partial<Requirement> = {
+      title: editFormData.title.trim(),
+      description: editFormData.description?.trim() || '',
+      assigneeId: editFormData.assigneeId || null,
+      priority: editFormData.priority as Priority,
+      estimatedHours: Number(editFormData.estimatedHours) || 0,
+      dueDate: editFormData.dueDate || null,
+      status: editFormData.status as RequirementStatus,
+      blocked: editFormData.blocked || false,
+      blockReason: editFormData.blocked ? editFormData.blockReason?.trim() || null : null,
+    };
+    s.updateRequirement(selectedReq.id, updates);
+    const updatedReq = s.requirements.find((r) => r.id === selectedReq.id);
+    if (updatedReq) {
+      setSelectedReq(updatedReq);
+    }
+    setIsEditing(false);
+    setEditFormData({});
+  };
+
+  const handleDelete = () => {
+    if (!selectedReq) return;
+    s.deleteRequirement(selectedReq.id);
+    setSelectedReq(null);
+    setShowDeleteModal(false);
+    setIsEditing(false);
+    setEditFormData({});
   };
 
   const un = (id: string) => s.getUserById(id)?.name || '未知用户';
@@ -169,7 +229,19 @@ export default function Requirements() {
                           {req.blocked && <AlertTriangle className="w-4 h-4 text-danger-500" />}
                         </div>
                       </td>
-                      <td className="px-4 py-3"><Badge variant={req.status}>{getStatusLabel(req.status)}</Badge></td>
+                      <td className="px-4 py-3">
+                        <select
+                          value={req.status}
+                          onChange={(e) => s.updateRequirementStatus(req.id, e.target.value as any)}
+                          className="bg-transparent border border-slate-700 rounded px-2 py-1 text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-primary-500"
+                        >
+                          <option value="todo">待开始</option>
+                          <option value="in-progress">进行中</option>
+                          <option value="testing">测试中</option>
+                          <option value="done">已完成</option>
+                          <option value="cancelled">已取消</option>
+                        </select>
+                      </td>
                       <td className="px-4 py-3"><Badge variant={req.priority}>{getPriorityLabel(req.priority)}</Badge></td>
                       <td className="px-4 py-3"><div className="flex items-center gap-2"><Avatar src={ua(req.assigneeId || '')} name={un(req.assigneeId || '')} size="sm" /><span className="text-slate-300">{un(req.assigneeId || '') || '未指派'}</span></div></td>
                       <td className="px-4 py-3 text-slate-400">{formatDate(req.dueDate)}</td>
@@ -193,8 +265,16 @@ export default function Requirements() {
       {selectedReq && (
         <div className="fixed inset-y-0 right-0 w-96 bg-dark-100 border-l border-slate-800 shadow-xl flex flex-col z-50">
           <div className="flex items-center justify-between p-4 border-b border-slate-800">
-            <h3 className="font-semibold text-slate-100 truncate pr-4">{selectedReq.title}</h3>
-            <Button variant="ghost" size="sm" onClick={() => setSelectedReq(null)}><X className="w-4 h-4" /></Button>
+            <h3 className="font-semibold text-slate-100 truncate pr-4">{isEditing ? editFormData.title : selectedReq.title}</h3>
+            <div className="flex items-center gap-1">
+              {!isEditing && activeTab === 'details' && (
+                <>
+                  <Button variant="ghost" size="sm" onClick={handleStartEdit}><Edit2 className="w-4 h-4" /></Button>
+                  <Button variant="ghost" size="sm" onClick={() => setShowDeleteModal(true)}><Trash2 className="w-4 h-4 text-danger-500" /></Button>
+                </>
+              )}
+              <Button variant="ghost" size="sm" onClick={() => { setSelectedReq(null); setIsEditing(false); setEditFormData({}); }}><X className="w-4 h-4" /></Button>
+            </div>
           </div>
           <div className="flex border-b border-slate-800">
             {(['details', 'comments', 'history'] as const).map((tab) => (
@@ -206,16 +286,131 @@ export default function Requirements() {
           <div className="flex-1 overflow-auto p-4">
             {activeTab === 'details' && (
               <div className="space-y-6">
-                <div><h4 className="text-sm font-medium text-slate-400 mb-2">描述</h4><p className="text-slate-200">{selectedReq.description}</p></div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div><h4 className="text-sm font-medium text-slate-400 mb-1">状态</h4><Badge variant={selectedReq.status}>{getStatusLabel(selectedReq.status)}</Badge></div>
-                  <div><h4 className="text-sm font-medium text-slate-400 mb-1">优先级</h4><Badge variant={selectedReq.priority}>{getPriorityLabel(selectedReq.priority)}</Badge></div>
-                </div>
-                <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><User className="w-4 h-4" /> 负责人</h4><div className="flex items-center gap-2"><Avatar src={ua(selectedReq.assigneeId || '')} name={un(selectedReq.assigneeId || '')} size="sm" /><span className="text-slate-200">{un(selectedReq.assigneeId || '') || '未指派'}</span></div></div>
-                <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><Calendar className="w-4 h-4" /> 截止日期</h4><p className="text-slate-200">{formatDate(selectedReq.dueDate)}</p></div>
-                <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><Clock className="w-4 h-4" /> 工时进度</h4><Progress value={gp(selectedReq)} showLabel size="lg" /><p className="text-sm text-slate-500 mt-1">{selectedReq.spentHours} / {selectedReq.estimatedHours} 小时</p></div>
-                <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><Tag className="w-4 h-4" /> 标签</h4><div className="flex flex-wrap gap-2">{selectedReq.tags.map((tag) => <TagComponent key={tag}>{tag}</TagComponent>)}</div></div>
-                <div><h4 className="text-sm font-medium text-slate-400 mb-2">创建信息</h4><p className="text-sm text-slate-500">创建人: {un(selectedReq.reporterId)}</p><p className="text-sm text-slate-500">创建时间: {formatDateTime(selectedReq.createdAt)}</p><p className="text-sm text-slate-500">更新时间: {formatDateTime(selectedReq.updatedAt)}</p></div>
+                {isEditing ? (
+                  <>
+                    <div>
+                      <label className={labelStyle}>标题</label>
+                      <Input
+                        value={editFormData.title || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, title: e.target.value })}
+                        placeholder="请输入需求标题"
+                      />
+                    </div>
+                    <div>
+                      <label className={labelStyle}>说明</label>
+                      <textarea
+                        value={editFormData.description || ''}
+                        onChange={(e) => setEditFormData({ ...editFormData, description: e.target.value })}
+                        placeholder="请输入需求说明"
+                        className={textareaStyle}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelStyle}>负责人</label>
+                        <select
+                          value={editFormData.assigneeId || ''}
+                          onChange={(e) => setEditFormData({ ...editFormData, assigneeId: e.target.value || null })}
+                          className={selectStyle}
+                        >
+                          <option value="">请选择负责人</option>
+                          {s.users.map((u) => (
+                            <option key={u.id} value={u.id}>{u.name}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className={labelStyle}>优先级</label>
+                        <select
+                          value={editFormData.priority || 'medium'}
+                          onChange={(e) => setEditFormData({ ...editFormData, priority: e.target.value as Priority })}
+                          className={selectStyle}
+                        >
+                          <option value="low">低</option>
+                          <option value="medium">中</option>
+                          <option value="high">高</option>
+                          <option value="urgent">紧急</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className={labelStyle}>预计工时（小时）</label>
+                        <Input
+                          type="number"
+                          value={editFormData.estimatedHours || ''}
+                          onChange={(e) => setEditFormData({ ...editFormData, estimatedHours: Number(e.target.value) })}
+                          placeholder="0"
+                          min="0"
+                        />
+                      </div>
+                      <div>
+                        <label className={labelStyle}>截止日期</label>
+                        <Input
+                          type="date"
+                          value={editFormData.dueDate || ''}
+                          onChange={(e) => setEditFormData({ ...editFormData, dueDate: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className={labelStyle}>状态</label>
+                      <select
+                        value={editFormData.status || 'todo'}
+                        onChange={(e) => setEditFormData({ ...editFormData, status: e.target.value as RequirementStatus })}
+                        className={selectStyle}
+                      >
+                        <option value="todo">待开始</option>
+                        <option value="in-progress">进行中</option>
+                        <option value="testing">测试中</option>
+                        <option value="done">已完成</option>
+                        <option value="cancelled">已取消</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="flex items-center gap-2 mb-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editFormData.blocked || false}
+                          onChange={(e) => setEditFormData({ ...editFormData, blocked: e.target.checked })}
+                          className="w-4 h-4 rounded border-slate-600 bg-dark-200 text-primary-500 focus:ring-primary-500"
+                        />
+                        <span className="text-sm font-medium text-slate-300">阻塞</span>
+                      </label>
+                      {editFormData.blocked && (
+                        <textarea
+                          value={editFormData.blockReason || ''}
+                          onChange={(e) => setEditFormData({ ...editFormData, blockReason: e.target.value })}
+                          placeholder="请输入阻塞原因"
+                          className={textareaStyle}
+                        />
+                      )}
+                    </div>
+                    <div className="flex gap-3 pt-4">
+                      <Button variant="secondary" onClick={handleCancelEdit} className="flex-1">取消</Button>
+                      <Button variant="primary" onClick={handleSaveEdit} className="flex-1">保存</Button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div><h4 className="text-sm font-medium text-slate-400 mb-2">描述</h4><p className="text-slate-200">{selectedReq.description}</p></div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div><h4 className="text-sm font-medium text-slate-400 mb-1">状态</h4><Badge variant={selectedReq.status}>{getStatusLabel(selectedReq.status)}</Badge></div>
+                      <div><h4 className="text-sm font-medium text-slate-400 mb-1">优先级</h4><Badge variant={selectedReq.priority}>{getPriorityLabel(selectedReq.priority)}</Badge></div>
+                    </div>
+                    <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><User className="w-4 h-4" /> 负责人</h4><div className="flex items-center gap-2"><Avatar src={ua(selectedReq.assigneeId || '')} name={un(selectedReq.assigneeId || '')} size="sm" /><span className="text-slate-200">{un(selectedReq.assigneeId || '') || '未指派'}</span></div></div>
+                    <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><Calendar className="w-4 h-4" /> 截止日期</h4><p className="text-slate-200">{formatDate(selectedReq.dueDate)}</p></div>
+                    <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><Clock className="w-4 h-4" /> 工时进度</h4><Progress value={gp(selectedReq)} showLabel size="lg" /><p className="text-sm text-slate-500 mt-1">{selectedReq.spentHours} / {selectedReq.estimatedHours} 小时</p></div>
+                    {selectedReq.blocked && (
+                      <div className="p-3 bg-danger-500/10 border border-danger-500/30 rounded-lg">
+                        <h4 className="text-sm font-medium text-danger-400 mb-1 flex items-center gap-2"><AlertTriangle className="w-4 h-4" /> 阻塞原因</h4>
+                        <p className="text-sm text-slate-300">{selectedReq.blockReason}</p>
+                      </div>
+                    )}
+                    <div><h4 className="text-sm font-medium text-slate-400 mb-2 flex items-center gap-2"><Tag className="w-4 h-4" /> 标签</h4><div className="flex flex-wrap gap-2">{selectedReq.tags.map((tag) => <TagComponent key={tag}>{tag}</TagComponent>)}</div></div>
+                    <div><h4 className="text-sm font-medium text-slate-400 mb-2">创建信息</h4><p className="text-sm text-slate-500">创建人: {un(selectedReq.reporterId)}</p><p className="text-sm text-slate-500">创建时间: {formatDateTime(selectedReq.createdAt)}</p><p className="text-sm text-slate-500">更新时间: {formatDateTime(selectedReq.updatedAt)}</p></div>
+                  </>
+                )}
               </div>
             )}
             {activeTab === 'comments' && (
@@ -344,6 +539,23 @@ export default function Requirements() {
           </Card>
         </div>
       )}
+
+      <Modal
+        isOpen={showDeleteModal}
+        onClose={() => setShowDeleteModal(false)}
+        title="确认删除"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowDeleteModal(false)}>取消</Button>
+            <Button variant="danger" onClick={handleDelete}>确认删除</Button>
+          </>
+        }
+      >
+        <p className="text-slate-300">
+          确定要删除需求「<span className="font-medium text-slate-100">{selectedReq?.title}</span>」吗？
+          此操作不可撤销，相关的评论和活动记录也将被移除。
+        </p>
+      </Modal>
     </div>
   );
 }
