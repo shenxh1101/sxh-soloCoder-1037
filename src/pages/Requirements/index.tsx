@@ -6,9 +6,10 @@ import { Badge } from '../../components/ui/Badge';
 import { Avatar } from '../../components/ui/Avatar';
 import { Tag as TagComponent } from '../../components/ui/Tag';
 import { Progress } from '../../components/ui/Progress';
+import { Input } from '../../components/ui/Input';
 import { useStore } from '../../store';
 import { formatDate, formatDateTime, formatRelativeTime, getStatusLabel, getPriorityLabel } from '../../utils';
-import type { Requirement } from '../../types';
+import type { Requirement, Priority } from '../../types';
 
 export default function Requirements() {
   const s = useStore();
@@ -17,9 +18,17 @@ export default function Requirements() {
   const [selectedReq, setSelectedReq] = useState<Requirement | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showNewModal, setShowNewModal] = useState(false);
-  const [newReqTitle, setNewReqTitle] = useState('');
   const [commentText, setCommentText] = useState('');
   const [activeTab, setActiveTab] = useState<'details' | 'comments' | 'history'>('details');
+  const [formData, setFormData] = useState({
+    title: '',
+    description: '',
+    assigneeId: '',
+    priority: 'medium' as Priority,
+    estimatedHours: '',
+    dueDate: '',
+  });
+  const [formErrors, setFormErrors] = useState<{ title?: string }>({});
 
   const requirements = useMemo(() => {
     let reqs = s.getRequirementsByProject(s.currentProjectId)
@@ -37,11 +46,57 @@ export default function Requirements() {
   const activities = useMemo(() => selectedReq ? s.getActivitiesByProject(s.currentProjectId).filter((a) => a.requirementId === selectedReq.id) : [], [selectedReq, s]);
 
   const handleCreate = () => {
-    if (newReqTitle.trim()) {
-      s.addRequirement({ projectId: s.currentProjectId, title: newReqTitle.trim(), description: '', status: 'todo', priority: 'medium', assigneeId: null, reporterId: s.currentUserId, estimatedHours: 0, spentHours: 0, dueDate: null, tags: [], milestoneId: null, blocked: false, blockReason: null });
-      setNewReqTitle(''); setShowNewModal(false);
+    if (!formData.title.trim()) {
+      setFormErrors({ title: '请输入需求标题' });
+      return;
     }
+    const newId = s.addRequirement({
+      projectId: s.currentProjectId,
+      title: formData.title.trim(),
+      description: formData.description.trim(),
+      status: 'todo',
+      priority: formData.priority,
+      assigneeId: formData.assigneeId || null,
+      reporterId: s.currentUserId,
+      estimatedHours: formData.estimatedHours ? Number(formData.estimatedHours) : 0,
+      spentHours: 0,
+      dueDate: formData.dueDate || null,
+      tags: [],
+      milestoneId: null,
+      blocked: false,
+      blockReason: null,
+    });
+    const newReq = s.requirements.find((r) => r.id === newId);
+    if (newReq) {
+      setSelectedReq(newReq);
+    }
+    setFormData({
+      title: '',
+      description: '',
+      assigneeId: '',
+      priority: 'medium',
+      estimatedHours: '',
+      dueDate: '',
+    });
+    setFormErrors({});
+    setShowNewModal(false);
   };
+
+  const resetForm = () => {
+    setFormData({
+      title: '',
+      description: '',
+      assigneeId: '',
+      priority: 'medium',
+      estimatedHours: '',
+      dueDate: '',
+    });
+    setFormErrors({});
+  };
+
+  const selectStyle = "w-full px-3 py-2 bg-dark-200 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed";
+  const textareaStyle = "w-full px-3 py-2 bg-dark-200 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed resize-none min-h-[80px]";
+  const labelStyle = "block text-sm font-medium text-slate-300 mb-1.5";
 
   const handleAddComment = () => {
     if (commentText.trim() && selectedReq) {
@@ -81,7 +136,7 @@ export default function Requirements() {
               </div>
               <div>
                 <label className="text-xs text-slate-400 mb-1 block">优先级</label>
-                <select value={s.priorityFilter || ''} onChange={(e) => s.setPriorityFilter((e.target.value as any) || null)} className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <select value={s.priorityFilter || ''} onChange={(e) => s.setPriorityFilter((e.target.value as Priority) || null)} className="px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 focus:outline-none focus:ring-2 focus:ring-primary-500">
                   <option value="">全部</option><option value="low">低</option><option value="medium">中</option><option value="high">高</option><option value="urgent">紧急</option>
                 </select>
               </div>
@@ -206,13 +261,84 @@ export default function Requirements() {
 
       {showNewModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <Card className="w-full max-w-md mx-4">
+          <Card className="w-full max-w-lg mx-4 max-h-[90vh] overflow-y-auto">
             <CardHeader><CardTitle>新建需求</CardTitle></CardHeader>
             <CardContent>
-              <input type="text" value={newReqTitle} onChange={(e) => setNewReqTitle(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleCreate()} placeholder="输入需求名称..." className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 mb-4" autoFocus />
-              <div className="flex justify-end gap-3">
-                <Button variant="secondary" onClick={() => setShowNewModal(false)}>取消</Button>
-                <Button variant="primary" onClick={handleCreate} disabled={!newReqTitle.trim()}>创建</Button>
+              <div className="space-y-4">
+                <div>
+                  <label className={labelStyle}>需求标题 <span className="text-danger-500">*</span></label>
+                  <Input
+                    value={formData.title}
+                    onChange={(e) => {
+                      setFormData({ ...formData, title: e.target.value });
+                      if (formErrors.title) setFormErrors({});
+                    }}
+                    placeholder="请输入需求标题"
+                    error={formErrors.title}
+                    autoFocus
+                  />
+                </div>
+                <div>
+                  <label className={labelStyle}>需求说明</label>
+                  <textarea
+                    value={formData.description}
+                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    placeholder="请输入需求说明"
+                    className={textareaStyle}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelStyle}>负责人</label>
+                    <select
+                      value={formData.assigneeId}
+                      onChange={(e) => setFormData({ ...formData, assigneeId: e.target.value })}
+                      className={selectStyle}
+                    >
+                      <option value="">请选择负责人</option>
+                      {s.users.map((u) => (
+                        <option key={u.id} value={u.id}>{u.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className={labelStyle}>优先级</label>
+                    <select
+                      value={formData.priority}
+                      onChange={(e) => setFormData({ ...formData, priority: e.target.value as Priority })}
+                      className={selectStyle}
+                    >
+                      <option value="low">低</option>
+                      <option value="medium">中</option>
+                      <option value="high">高</option>
+                      <option value="urgent">紧急</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className={labelStyle}>预计工时（小时）</label>
+                    <Input
+                      type="number"
+                      value={formData.estimatedHours}
+                      onChange={(e) => setFormData({ ...formData, estimatedHours: e.target.value })}
+                      placeholder="0"
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyle}>截止日期</label>
+                    <Input
+                      type="date"
+                      value={formData.dueDate}
+                      onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+              </div>
+              <div className="flex justify-end gap-3 mt-6">
+                <Button variant="secondary" onClick={() => { resetForm(); setShowNewModal(false); }}>取消</Button>
+                <Button variant="primary" onClick={handleCreate}>创建</Button>
               </div>
             </CardContent>
           </Card>

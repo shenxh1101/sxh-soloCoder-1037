@@ -103,12 +103,20 @@ export const getPendingItemTypeLabel = (type: PendingItemType): string => {
 
 export const getFileIcon = (type: string): string => {
   if (type.startsWith('image/')) return 'image';
-  if (type.includes('pdf')) return 'file-text';
-  if (type.includes('word') || type.includes('doc')) return 'file-text';
-  if (type.includes('excel') || type.includes('sheet')) return 'sheet';
+  if (type.includes('pdf') || type.includes('word') || type.includes('doc') || type.includes('msword') || type.includes('text/')) return 'file-text';
+  if (type.includes('excel') || type.includes('sheet') || type.includes('spreadsheet')) return 'sheet';
   if (type.includes('figma')) return 'palette';
-  if (type.includes('zip') || type.includes('rar')) return 'archive';
+  if (type.includes('zip') || type.includes('rar') || type.includes('archive') || type.includes('compressed')) return 'archive';
   return 'file';
+};
+
+export const getFileTypeCategory = (type: string): string => {
+  if (type.startsWith('image/')) return 'image';
+  if (type.includes('pdf') || type.includes('word') || type.includes('doc') || type.includes('msword') || type.includes('text/')) return 'document';
+  if (type.includes('excel') || type.includes('sheet') || type.includes('spreadsheet')) return 'spreadsheet';
+  if (type.includes('figma')) return 'design';
+  if (type.includes('zip') || type.includes('rar') || type.includes('archive') || type.includes('compressed')) return 'archive';
+  return 'other';
 };
 
 export const getActivityIcon = (type: string): string => {

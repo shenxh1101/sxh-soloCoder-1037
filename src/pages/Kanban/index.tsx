@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   DndContext,
   DragOverlay,
@@ -27,6 +27,11 @@ import {
   Upload,
   UserPlus,
   Flag,
+  Send,
+  Link2,
+  Paperclip,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import { useStore } from '../../store';
 import { kanbanColumns } from '../../data/mockData';
@@ -34,6 +39,7 @@ import {
   formatDate,
   formatDateTime,
   formatRelativeTime,
+  formatFileSize,
   getPriorityLabel,
   getStatusLabel,
   cn,
@@ -114,15 +120,17 @@ function SortableTaskCard({ task, onClick }: SortableCardProps) {
 
 export default function Kanban() {
   const {
-    users, getRequirementsByStatus, getCommentsByRequirement, getFilesByProject,
-    getActivitiesByProject, getUserById, updateRequirementStatus, currentProjectId,
-    myTasksFilter, assigneeFilter, priorityFilter, setMyTasksFilter,
+    users, getRequirementsByStatus, getCommentsByRequirement, getFilesByProject, getFilesByRequirement,
+    getActivitiesByProject, getUserById, updateRequirementStatus, addComment, linkFileToRequirement,
+    currentProjectId, myTasksFilter, assigneeFilter, priorityFilter, setMyTasksFilter,
     setAssigneeFilter, setPriorityFilter,
   } = useStore();
 
   const [activeTask, setActiveTask] = useState<Requirement | null>(null);
   const [selectedTask, setSelectedTask] = useState<Requirement | null>(null);
   const [showModal, setShowModal] = useState(false);
+  const [commentText, setCommentText] = useState('');
+  const [showFileSelector, setShowFileSelector] = useState(false);
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -155,9 +163,34 @@ export default function Kanban() {
   const taskActivities = selectedTask
     ? getActivitiesByProject(currentProjectId).filter((a) => a.requirementId === selectedTask.id)
     : [];
-  const taskFiles = selectedTask
-    ? getFilesByProject(currentProjectId).filter((f) => f.requirementId === selectedTask.id)
-    : [];
+  const taskFiles = selectedTask ? getFilesByRequirement(selectedTask.id) : [];
+  const availableFiles = useMemo(() => {
+    if (!selectedTask) return [];
+    const projectFiles = getFilesByProject(currentProjectId);
+    return projectFiles.filter((f) => !f.requirementId);
+  }, [selectedTask, currentProjectId, getFilesByProject]);
+
+  const handleAddComment = () => {
+    if (commentText.trim() && selectedTask) {
+      addComment(selectedTask.id, commentText.trim());
+      setCommentText('');
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleAddComment();
+    }
+  };
+
+  const handleLinkFile = (fileId: string) => {
+    if (selectedTask) {
+      linkFileToRequirement(fileId, selectedTask.id);
+    }
+  };
+
+  const textareaStyle = "w-full px-3 py-2 bg-dark-200 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors resize-none min-h-[80px]";
 
   return (
     <div className="h-full flex flex-col">
@@ -234,7 +267,11 @@ export default function Kanban() {
 
       <Modal
         isOpen={showModal}
-        onClose={() => setShowModal(false)}
+        onClose={() => {
+          setShowModal(false);
+          setShowFileSelector(false);
+          setCommentText('');
+        }}
         title={selectedTask?.title}
         className="max-w-3xl max-h-[80vh] overflow-y-auto"
       >
@@ -272,9 +309,52 @@ export default function Kanban() {
                 <span className="text-slate-400 text-sm">{selectedTask.spentHours} 小时</span>
               </div>
             </div>
-            {taskFiles.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-slate-300 mb-3">关联文件</h4>
+
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h4 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
+                  <Paperclip className="w-4 h-4" />
+                  关联文件 ({taskFiles.length})
+                </h4>
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => setShowFileSelector(!showFileSelector)}
+                  className="gap-1.5"
+                >
+                  <Link2 className="w-4 h-4" />
+                  {showFileSelector ? '收起' : '关联文件'}
+                  {showFileSelector ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                </Button>
+              </div>
+
+              {showFileSelector && (
+                <div className="mb-4 p-3 bg-dark-200/50 rounded-lg border border-slate-700">
+                  <h5 className="text-xs font-medium text-slate-400 mb-2">可关联的文件</h5>
+                  {availableFiles.length > 0 ? (
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {availableFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="flex items-center gap-3 p-2 rounded-lg hover:bg-dark-100 cursor-pointer transition-colors"
+                          onClick={() => handleLinkFile(file.id)}
+                        >
+                          <FileText className="w-4 h-4 text-slate-400" />
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm text-slate-200 truncate">{file.name}</p>
+                            <p className="text-xs text-slate-500">{formatFileSize(file.size)}</p>
+                          </div>
+                          <Link2 className="w-4 h-4 text-primary-400" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-slate-500 py-2 text-center">暂无可关联的文件</p>
+                  )}
+                </div>
+              )}
+
+              {taskFiles.length > 0 ? (
                 <div className="space-y-2">
                   {taskFiles.map((file: ProjectFile) => (
                     <Card key={file.id} className="p-3">
@@ -282,18 +362,26 @@ export default function Kanban() {
                         <FileText className="w-5 h-5 text-primary-400" />
                         <div className="flex-1">
                           <p className="text-sm text-slate-200">{file.name}</p>
-                          <p className="text-xs text-slate-500">{formatDateTime(file.uploadedAt)}</p>
+                          <p className="text-xs text-slate-500">
+                            {formatFileSize(file.size)} · {formatDateTime(file.uploadedAt)}
+                          </p>
                         </div>
                       </div>
                     </Card>
                   ))}
                 </div>
-              </div>
-            )}
-            {taskComments.length > 0 && (
-              <div>
-                <h4 className="text-sm font-semibold text-slate-300 mb-3">评论 ({taskComments.length})</h4>
-                <div className="space-y-3">
+              ) : (
+                <p className="text-sm text-slate-500 py-2">暂无关联文件</p>
+              )}
+            </div>
+
+            <div>
+              <h4 className="text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+                <MessageSquare className="w-4 h-4" />
+                评论 ({taskComments.length})
+              </h4>
+              {taskComments.length > 0 ? (
+                <div className="space-y-3 mb-4">
                   {taskComments.map((comment) => {
                     const user = getUserById(comment.userId);
                     return (
@@ -310,8 +398,28 @@ export default function Kanban() {
                     );
                   })}
                 </div>
+              ) : (
+                <p className="text-sm text-slate-500 py-4 mb-4 text-center">暂无评论</p>
+              )}
+              <div className="flex gap-2">
+                <textarea
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="添加评论...（按 Enter 发送，Shift+Enter 换行）"
+                  className={textareaStyle}
+                />
+                <Button
+                  onClick={handleAddComment}
+                  disabled={!commentText.trim()}
+                  icon={Send}
+                  className="self-end"
+                >
+                  发送
+                </Button>
               </div>
-            )}
+            </div>
+
             {taskActivities.length > 0 && (
               <div>
                 <h4 className="text-sm font-semibold text-slate-300 mb-3">变更记录</h4>

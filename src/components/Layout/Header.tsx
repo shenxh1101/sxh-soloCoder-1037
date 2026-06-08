@@ -1,18 +1,55 @@
 import React, { useState } from 'react';
-import { ChevronDown, Bell, Search, Settings } from 'lucide-react';
+import { ChevronDown, Bell, Search, Settings, Plus } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { useStore } from '../../store';
 import { cn } from '../../utils';
 import { Avatar } from '../ui/Avatar';
 import { Button } from '../ui/Button';
+import { Modal } from '../ui/Modal';
+import { Input } from '../ui/Input';
 import { getRoleLabel } from '../../utils';
 
+const colorOptions = [
+  '#3B82F6',
+  '#10B981',
+  '#F59E0B',
+  '#EF4444',
+  '#8B5CF6',
+  '#EC4899',
+];
+
 export const Header: React.FC = () => {
-  const { getCurrentProject, getCurrentUser, projects, setCurrentProject } = useStore();
+  const { getCurrentProject, getCurrentUser, projects, setCurrentProject, addProject } = useStore();
+  const navigate = useNavigate();
   const [projectDropdownOpen, setProjectDropdownOpen] = useState(false);
   const [userDropdownOpen, setUserDropdownOpen] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [newProjectName, setNewProjectName] = useState('');
+  const [newProjectDescription, setNewProjectDescription] = useState('');
+  const [newProjectColor, setNewProjectColor] = useState(colorOptions[0]);
 
   const currentProject = getCurrentProject();
   const currentUser = getCurrentUser();
+
+  const handleCreateProject = () => {
+    if (!newProjectName.trim()) return;
+    
+    const newProjectId = addProject({
+      name: newProjectName.trim(),
+      description: newProjectDescription.trim(),
+      color: newProjectColor,
+      icon: 'folder',
+    });
+    
+    setCurrentProject(newProjectId);
+    setCreateModalOpen(false);
+    setProjectDropdownOpen(false);
+    setNewProjectName('');
+    setNewProjectDescription('');
+    setNewProjectColor(colorOptions[0]);
+    
+    navigate(`/projects/${newProjectId}/dashboard`);
+  };
 
   return (
     <header className="h-16 bg-dark-200 border-b border-slate-800 flex items-center justify-between px-6">
@@ -64,6 +101,17 @@ export const Header: React.FC = () => {
                     </div>
                   </button>
                 ))}
+                <hr className="my-2 border-slate-700" />
+                <button
+                  onClick={() => {
+                    setProjectDropdownOpen(false);
+                    setCreateModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm text-slate-300 hover:bg-dark-200 transition-colors"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>创建新项目</span>
+                </button>
               </div>
             </div>
           )}
@@ -124,6 +172,71 @@ export const Header: React.FC = () => {
           )}
         </div>
       </div>
+
+      <Modal
+        isOpen={createModalOpen}
+        onClose={() => setCreateModalOpen(false)}
+        title="创建新项目"
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => setCreateModalOpen(false)}
+            >
+              取消
+            </Button>
+            <Button
+              variant="primary"
+              onClick={handleCreateProject}
+              disabled={!newProjectName.trim()}
+            >
+              创建
+            </Button>
+          </>
+        }
+      >
+        <div className="space-y-4">
+          <Input
+            label="项目名称"
+            placeholder="请输入项目名称"
+            value={newProjectName}
+            onChange={(e) => setNewProjectName(e.target.value)}
+            autoFocus
+          />
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">
+              项目描述
+            </label>
+            <textarea
+              value={newProjectDescription}
+              onChange={(e) => setNewProjectDescription(e.target.value)}
+              placeholder="请输入项目描述（可选）"
+              rows={3}
+              className="w-full px-3 py-2 bg-dark-200 border border-slate-700 rounded-lg text-slate-200 placeholder-slate-500 focus:outline-none focus:border-primary-500 focus:ring-1 focus:ring-primary-500 transition-colors resize-none"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-2">
+              项目颜色
+            </label>
+            <div className="flex gap-2">
+              {colorOptions.map((color) => (
+                <button
+                  key={color}
+                  onClick={() => setNewProjectColor(color)}
+                  className={cn(
+                    'w-8 h-8 rounded-full transition-all',
+                    newProjectColor === color
+                      ? 'ring-2 ring-white ring-offset-2 ring-offset-dark-100 scale-110'
+                      : 'hover:scale-105'
+                  )}
+                  style={{ backgroundColor: color }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+      </Modal>
     </header>
   );
 };

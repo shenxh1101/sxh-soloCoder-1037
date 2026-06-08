@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { Grid3X3, List, Search, Upload, Filter, Download, Trash2, Eye, FileImage, FileText, FileSpreadsheet, Palette, Archive, File } from 'lucide-react';
 import { useStore } from '../../store';
-import { formatFileSize, formatDateTime, getFileIcon, cn } from '../../utils';
+import { formatFileSize, formatDateTime, getFileIcon, getFileTypeCategory, cn } from '../../utils';
 import { Button } from '../../components/ui/Button';
 import { Card } from '../../components/ui/Card';
 import { Tag } from '../../components/ui/Tag';
@@ -42,7 +42,7 @@ export default function Files() {
       );
     }
     if (typeFilter !== 'all') {
-      result = result.filter((f) => getFileIcon(f.type) === typeFilter);
+      result = result.filter((f) => getFileTypeCategory(f.type) === typeFilter);
     }
     if (timeFilter !== 'all') {
       const now = new Date();
